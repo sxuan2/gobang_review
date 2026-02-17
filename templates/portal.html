@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏研讨平台</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .container { text-align: center; }
+        h1 { color: #2c3e50; margin-bottom: 40px; }
+        .game-card {
+            background: white; padding: 30px; border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s; cursor: pointer; width: 200px;
+        }
+        .game-card:hover { transform: translateY(-5px); }
+        .icon { font-size: 50px; margin-bottom: 15px; display: block; }
+        .title { font-weight: bold; font-size: 18px; color: #333; }
+    /* 添加到 style 标签内 */
+    .user-bar {
+        position: absolute;
+        top: 15px;
+        right: 20px;
+        font-size: 14px;
+        color: #555;
+        background: rgba(255,255,255,0.8);
+        padding: 5px 10px;
+        border-radius: 20px;
+    }
+    .user-bar a {
+        text-decoration: none;
+        margin-left: 10px;
+        color: #007bff;
+        font-weight: bold;
+    }
+    .user-bar a.danger { color: #dc3545; }
+
+    </style>
+</head>
+<body>
+    <div class="user-bar">
+        👤 {{ current_user.username }}
+        {% if current_user.is_admin %}
+            <a href="/admin_panel">⚙️ 后台管理</a>
+        {% endif %}
+        <a href="/logout" class="danger">退出登录</a>
+    </div>
+    <div class="container">
+        <h1>综合研讨平台入口</h1>
+        <div class="game-card" onclick="window.location.href='/lobby'">
+            <span class="icon">⚫</span>
+            <span class="title">五子棋战术研讨</span>
+        </div>
+        <div class="game-card" onclick="window.location.href='/gobang/review'">
+            <span class="icon">🎬</span>
+            <span class="title">战术复盘(五子棋)</span>
+        </div>
+    </div>
+</div>
+</body>
+</html>

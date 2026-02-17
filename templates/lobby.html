@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研讨室大厅</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; color: #2c3e50; }
+        .section { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
+        button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; background: #007bff; color: white; }
+        button:hover { opacity: 0.9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        tr:hover { background-color: #f8f9fa; cursor: pointer; }
+        /* 添加到 style 标签内 */
+        .user-bar {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 14px;
+            color: #555;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 20px;
+        }
+        .user-bar a {
+            text-decoration: none;
+            margin-left: 10px;
+            color: #007bff;
+            font-weight: bold;
+        }
+        .user-bar a.danger { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="user-bar">
+    👤 {{ current_user.username }}
+    {% if current_user.is_admin %}
+        <a href="/admin_panel">⚙️ 后台管理</a>
+    {% endif %}
+    <a href="/logout" class="danger">退出登录</a>
+    </div>
+
+    <h1>五子棋研讨大厅</h1>
+    
+    <div class="section">
+        <h3>🏠 创建新研讨室</h3>
+        <input type="text" id="new-name" placeholder="房间名称 (如: 技术部复盘)" style="width: 200px;">
+        <input type="text" id="new-pwd" placeholder="6位数字密码" maxlength="6" style="width: 120px;">
+        <button onclick="createRoom()">立即创建</button>
+    </div>
+
+    <div class="section">
+        <h3>📋 房间列表</h3>
+        <table>
+            <thead><tr><th>ID</th><th>名称</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody>
+                {% for room in rooms %}
+                <tr onclick="enterRoom('{{ room.id }}')">
+                    <td>{{ room.id }}</td>
+                    <td>{{ room.name }}</td>
+                    <td>{{ room.created_at }}</td>
+                    <td><button style="padding: 5px 10px; font-size: 12px;">进入</button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function createRoom() {
+            const name = document.getElementById('new-name').value;
+            const pwd = document.getElementById('new-pwd').value;
+            if(!name || !pwd) return alert("请填写完整");
+            
+            fetch('/api/create_room', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, password: pwd})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.error) alert(data.error);
+                else window.location.reload();
+            });
+        }
+
+        function enterRoom(id) {
+            window.location.href = `/room/${id}`;
+        }
+    </script>
+</body>
+</html>

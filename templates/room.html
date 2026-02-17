@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>研讨室: {{ room_name }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        /* 复用之前的 CSS，增加顶部导航 */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding-bottom: 20px; }
+        
+        .header-bar { width: 100%; background: #333; color: white; padding: 10px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; }
+        .header-bar a { color: #ddd; text-decoration: none; margin-left: 15px; font-size: 14px; }
+        
+        h1 { color: #2c3e50; margin: 15px 0; font-size: 20px; text-align: center; }
+
+        /* 登录遮罩 */
+        #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .login-box { background: white; padding: 2rem; border-radius: 10px; text-align: center; width: 80%; max-width: 300px; }
+        .login-box input { width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px; font-size: 16px; text-align: center; letter-spacing: 5px; }
+        
+        /* 布局 */
+        #main-wrapper { display: flex; gap: 20px; padding: 10px; width: 100%; max-width: 1000px; box-sizing: border-box; flex-direction: row; align-items: flex-start; justify-content: center; }
+        #board-container { background: white; padding: 5px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 620px; }
+        canvas { background-color: #DEB887; border: 2px solid #5c3a21; cursor: crosshair; width: 100% !important; height: auto !important; touch-action: none; }
+        #sidebar { width: 280px; display: flex; flex-direction: column; gap: 10px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
+        
+        @media (max-width: 768px) {
+            #main-wrapper { flex-direction: column; align-items: center; }
+            #sidebar { width: 100%; box-sizing: border-box; }
+        }
+
+        .card { background: #f8f9fa; border-radius: 8px; padding: 10px; border: 1px solid #eee; }
+        select#game-select { width: 100%; padding: 8px; margin-bottom: 5px; }
+        #move-list { height: 120px; overflow-y: auto; list-style: none; padding: 0; border: 1px solid #eee; background: #fff; }
+        #move-list li { padding: 4px 10px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; font-size: 12px; }
+        .btn-row { display: flex; gap: 5px; margin-top: 5px; }
+        button { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; font-size: 13px; }
+        button:hover { opacity: 0.9; }
+        
+        .btn-act { background: #6c757d; font-size: 12px; margin-bottom: 5px; width: 100%; }
+        .btn-undo { background-color: #ffc107; color: #333; }
+        .btn-new { background-color: #28a745; }
+        .btn-del { background-color: #dc3545; }
+        
+        /* 导入框 */
+        #import-input { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="login-overlay">
+        <div class="login-box">
+            <h3>请输入房间密码</h3>
+            <div style="margin-bottom:10px; color:#666;">房间ID: {{ room_id }}</div>
+            <input type="text" id="password-input" placeholder="6位数字" maxlength="6" pattern="\d*">
+            <button onclick="joinGame()" style="background:#007bff; width:100%;">验证进入</button>
+            <p id="login-msg" style="color: red; margin-top: 10px; font-size: 12px;"></p>
+        </div>
+    </div>
+
+    <div class="header-bar">
+        <span>当前房间: {{ room_name }} (ID: {{ room_id }})</span>
+        <div>
+            <span style="font-size: 12px; color: #aaa; margin-right: 10px;">
+                👤 {{ current_user.username }}
+            </span>
+            <a href="/lobby">退出房间</a>
+            <a href="/logout" style="color: #ff6b6b; margin-left: 10px;">退出系统</a>
+        </div>
+    </div>
+
+    <div id="main-wrapper">
+        <div id="board-container">
+            <canvas id="chessBoard" width="600" height="600"></canvas>
+        </div>
+
+        <div id="sidebar">
+            <div class="card">
+                <div style="font-weight:bold; margin-bottom:5px;">📂 研讨记录管理</div>
+                <select id="game-select" onchange="loadSelectedGame()"></select>
+                
+                <div class="btn-row">
+                    <button class="btn-act" onclick="exportCurrentGame()" style="background:#17a2b8;">⬇ 导出本局(JSON)</button>
+                    <button class="btn-act" onclick="triggerImport()" style="background:#6f42c1;">⬆ 导入复盘</button>
+                    <input type="file" id="import-input" accept=".json" onchange="handleFileImport(this)">
+                </div>
+                <button class="btn-act btn-del" onclick="requestDeleteGame()">🗑 删除选中记录</button>
+            </div>
+
+            <div class="card" style="display:flex; justify-content: space-between;">
+                <div>状态: <span id="status-text" style="font-weight:bold;">--</span></div>
+                <div>手数: <span id="step-count">0</span></div>
+            </div>
+
+            <ul id="move-list"></ul>
+
+            <div class="btn-row">
+                <button class="btn-undo" onclick="requestUndo()">⏪ 悔棋</button>
+                <button class="btn-new" onclick="requestNewGame()">➕ 新对局</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const roomId = "{{ room_id }}";
+        let isAuthenticated = false;
+        
+        // 棋盘基础参数
+        const CANVAS_SIZE = 600;
+        const GRID_SIZE = 15;
+        const CELL_SIZE = CANVAS_SIZE / GRID_SIZE;
+        const OFFSET = CELL_SIZE / 2;
+        
+        const canvas = document.getElementById('chessBoard');
+        const ctx = canvas.getContext('2d');
+        
+        let currentMoves = []; 
+        let currentGameId = null;
+        let isGameOver = false;
+
+        // --- 认证 ---
+        function joinGame() {
+            const pwd = document.getElementById('password-input').value;
+            socket.emit('join_room', { room_id: roomId, password: pwd });
+        }
+        socket.on('auth_success', () => {
+            document.getElementById('login-overlay').style.display = 'none';
+            isAuthenticated = true;
+        });
+        socket.on('auth_fail', (d) => document.getElementById('login-msg').innerText = d.message);
+
+        // --- 绘图逻辑 (保持原样，省略细节以节省篇幅，功能完全一致) ---
+        function drawBoard() {
+            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            // 绘制背景和网格...
+            ctx.fillStyle = "#5c3a21"; ctx.font = "bold 12px Arial";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            for (let i = 0; i < GRID_SIZE; i++) {
+                let pos = OFFSET + i * CELL_SIZE; let num = i + 1;
+                ctx.fillText(num, pos, 10); ctx.fillText(num, 10, pos);
+            }
+            ctx.strokeStyle = "#8B4513"; ctx.lineWidth = 1;
+            for (let i = 0; i < GRID_SIZE; i++) {
+                ctx.beginPath(); ctx.moveTo(OFFSET, OFFSET + i*CELL_SIZE); ctx.lineTo(CANVAS_SIZE-OFFSET, OFFSET + i*CELL_SIZE); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(OFFSET + i*CELL_SIZE, OFFSET); ctx.lineTo(OFFSET + i*CELL_SIZE, CANVAS_SIZE-OFFSET); ctx.stroke();
+            }
+            [3, 7, 11].forEach(x => [3, 7, 11].forEach(y => {
+                ctx.beginPath(); ctx.arc(OFFSET + x*CELL_SIZE, OFFSET + y*CELL_SIZE, 3, 0, 2*Math.PI); ctx.fillStyle = "#8B4513"; ctx.fill();
+            }));
+        }
+
+        function drawPiece(x, y, color, isLast) {
+            let sx = OFFSET + x * CELL_SIZE, sy = OFFSET + y * CELL_SIZE;
+            ctx.beginPath(); ctx.arc(sx, sy, CELL_SIZE * 0.4, 0, 2*Math.PI);
+            let g = ctx.createRadialGradient(sx-2, sy-2, 2, sx, sy, CELL_SIZE*0.4);
+            if (color === 1) { g.addColorStop(0, "#666"); g.addColorStop(1, "#000"); } 
+            else { g.addColorStop(0, "#fff"); g.addColorStop(1, "#ddd"); }
+            ctx.fillStyle = g; ctx.fill();
+            if (isLast) { ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.strokeRect(sx-CELL_SIZE*0.2, sy-CELL_SIZE*0.2, CELL_SIZE*0.4, CELL_SIZE*0.4); }
+        }
+
+        function render() {
+            drawBoard();
+            currentMoves.forEach((m, i) => drawPiece(m.x, m.y, m.color, i === currentMoves.length - 1));
+            checkWin(); 
+            updateSidebar();
+        }
+
+        function checkWin() {
+            isGameOver = false;
+            if (currentMoves.length === 0) return;
+            let board = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0));
+            currentMoves.forEach(m => board[m.y][m.x] = m.color);
+            let winner = 0;
+            const checkLine = (r, c, dr, dc) => {
+                let color = board[r][c]; if (color === 0) return false;
+                for (let k = 1; k < 5; k++) {
+                    let nr = r + k * dr, nc = c + k * dc;
+                    if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) return false;
+                    if (board[nr][nc] !== color) return false;
+                } return color;
+            };
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (winner = checkLine(r, c, 0, 1)) break; if (winner = checkLine(r, c, 1, 0)) break;
+                    if (winner = checkLine(r, c, 1, 1)) break; if (winner = checkLine(r, c, 1, -1)) break;
+                } if (winner) break;
+            }
+            if (winner) { 
+                isGameOver = true; 
+                ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
+                ctx.fillStyle = "white"; ctx.font = "bold 40px Microsoft YaHei"; ctx.textAlign = "center";
+                ctx.fillText(winner === 1 ? "黑方胜" : "白方胜", CANVAS_SIZE/2, CANVAS_SIZE/2);
+            }
+        }
+
+        // --- 交互 ---
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', handleClick, {passive: false});
+
+        function handleClick(e) {
+            if (!isAuthenticated || isGameOver) return;
+            const rect = canvas.getBoundingClientRect();
+            let cx = e.touches ? e.touches[0].clientX : e.clientX;
+            let cy = e.touches ? e.touches[0].clientY : e.clientY;
+            let x = Math.round(((cx - rect.left) * (canvas.width/rect.width) - OFFSET) / CELL_SIZE);
+            let y = Math.round(((cy - rect.top) * (canvas.height/rect.height) - OFFSET) / CELL_SIZE);
+            
+            if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                if (!currentMoves.some(m => m.x === x && m.y === y)) {
+                    let color = (currentMoves.length % 2 === 0) ? 1 : 2;
+                    // 注意：发送了 room_id 和 game_id
+                    socket.emit('place_move', { room_id: roomId, game_id: currentGameId, x, y, color });
+                }
+            }
+            if(e.type === 'touchstart') e.preventDefault();
+        }
+
+        // --- 按钮功能 ---
+        function requestUndo() { if(confirm("撤销一步?")) socket.emit('undo_move', {room_id: roomId, game_id: currentGameId}); }
+        function requestNewGame() { if(confirm("新建对局?")) socket.emit('new_game', {room_id: roomId}); }
+        function requestDeleteGame() { 
+            let gid = document.getElementById('game-select').value;
+            if(confirm(`删除记录 ${gid}?`)) socket.emit('delete_game', {room_id: roomId, game_id: gid}); 
+        }
+        function loadSelectedGame() {
+            let gid = document.getElementById('game-select').value;
+            // 只是切换显示，不弹confirm了，体验好一点
+            socket.emit('load_game', {room_id: roomId, game_id: gid});
+        }
+
+        // --- 导入导出 ---
+        function exportCurrentGame() {
+            if(!currentGameId) return;
+            window.open(`/api/export_game/${currentGameId}`, '_blank');
+        }
+        function triggerImport() { document.getElementById('import-input').click(); }
+        function handleFileImport(input) {
+            if(input.files.length === 0) return;
+            let formData = new FormData();
+            formData.append('file', input.files[0]);
+            formData.append('room_id', roomId);
+            
+            fetch('/api/import_game', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(d => {
+                    if(d.error) alert("导入失败: " + d.error);
+                    else { alert("导入成功，对局ID: " + d.game_id); input.value = ''; }
+                });
+        }
+
+        // --- Socket 更新 ---
+        socket.on('update_board', (data) => {
+            currentMoves = data.moves;
+            currentGameId = data.game_id;
+            
+            // 更新下拉列表
+            const sel = document.getElementById('game-select');
+            sel.innerHTML = '';
+            data.games_list.forEach(g => {
+                let opt = document.createElement('option');
+                opt.value = g.id;
+                opt.text = `[${g.id}] ${g.name}`;
+                if(g.id == currentGameId) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            
+            updateSidebar();
+            render();
+        });
+        
+        function updateSidebar() {
+            document.getElementById('step-count').innerText = currentMoves.length;
+            let list = document.getElementById('move-list');
+            list.innerHTML = '';
+            currentMoves.forEach((m, i) => {
+                let li = document.createElement('li');
+                li.innerHTML = `<span>#${i+1} ${m.color===1?'黑':'白'}</span> <span>(${m.x+1}, ${m.y+1})</span>`;
+                list.appendChild(li);
+            });
+            list.scrollTop = list.scrollHeight;
+            let status = isGameOver ? "已结束" : (currentMoves.length%2===0 ? "黑方落子" : "白方落子");
+            document.getElementById('status-text').innerText = status;
+        }
+
+        // 初始化
+        drawBoard();
+    </script>
+</body>
+</html>

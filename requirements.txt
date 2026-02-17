@@ -1,0 +1,4 @@
+Flask==3.0.0
+Flask-SocketIO==5.3.6
+eventlet==0.33.3
+flask_login==0.6.3

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>后台管理</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background: #f9f9f9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .form-box { background: white; padding: 20px; border: 1px solid #ddd; margin-bottom: 20px; }
+        .btn-del { color: red; border: none; background: none; cursor: pointer; text-decoration: underline; }
+        /* 添加到 style 标签内 */
+        .user-bar {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 14px;
+            color: #555;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 20px;
+        }
+        .user-bar a {
+            text-decoration: none;
+            margin-left: 10px;
+            color: #007bff;
+            font-weight: bold;
+        }
+        .user-bar a.danger { color: #dc3545; }
+    
+    </style>
+</head>
+<body>
+    <div class="user-bar">
+        👤 {{ current_user.username }}
+        {% if current_user.is_admin %}
+            <a href="/admin_panel">⚙️ 后台管理</a>
+        {% endif %}
+        <a href="/logout" class="danger">退出登录</a>
+    </div>
+
+    <h1>👥 用户管理后台</h1>
+    <a href="/lobby">返回大厅</a>
+    
+    <div class="form-box">
+        <h3>添加新用户</h3>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}<p style="color:green">{{ messages[0] }}</p>{% endif %}
+        {% endwith %}
+        <form method="POST">
+            <input type="text" name="username" placeholder="用户名" required>
+            <input type="text" name="password" placeholder="初始密码" required>
+            <button type="submit">创建用户</button>
+        </form>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>角色</th>
+                <th>操作 (慎重)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <td>{{ '管理员' if u.is_admin else '普通用户' }}</td>
+                <td>
+                    <form action="/api/reset_password" method="POST" style="display:inline-block; margin-right:10px;">
+                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                        <input type="text" name="new_password" placeholder="新密码" style="width:80px; padding:2px; font-size:12px;">
+                        <button style="padding:2px 5px; font-size:12px; background:#ffc107; color:black;">重置</button>
+                    </form>
+
+                    {% if not u.is_admin %}
+                    <form action="/api/delete_user/{{ u.id }}" method="POST" style="display:inline-block;" onsubmit="return confirm('确定删除该用户吗?')">
+                        <button class="btn-del">删除</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

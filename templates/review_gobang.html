@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋复盘播放器</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .header { width: 100%; max-width: 900px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
+        #main-layout { display: flex; gap: 20px; max-width: 950px; width: 100%; flex-wrap: wrap; justify-content: center; }
+        
+        /* 棋盘样式 */
+        #canvas-container { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        canvas { background-color: #DEB887; border: 2px solid #5c3a21; cursor: default; }
+
+        /* 控制面板 */
+        #controls { width: 300px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .info-box { background: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin-bottom: 20px; }
+        
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        button { padding: 10px; font-weight: bold; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; background: #fff; transition: 0.2s; }
+        button:hover:not(:disabled) { background: #e9ecef; border-color: #adb5bd; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: #007bff; color: white; border: none; grid-column: span 2; }
+        .btn-primary:hover { background: #0056b3; }
+
+        #progress-bar { width: 100%; margin: 15px 0; cursor: pointer; }
+        #step-label { font-size: 18px; font-weight: bold; text-align: center; margin: 10px 0; color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2 style="margin:0;">🎬 五子棋战术复盘</h2>
+        <a href="/" style="text-decoration:none; color:#007bff;">返回门户</a>
+    </div>
+
+    <div id="main-layout">
+        <div id="canvas-container">
+            <canvas id="reviewCanvas" width="600" height="600"></canvas>
+        </div>
+
+        <div id="controls">
+            <div class="info-box">
+                <div style="font-weight:bold; margin-bottom:10px;">📂 导入棋谱文件</div>
+                <input type="file" id="fileInput" accept=".json" style="font-size:12px; width:100%;">
+                <div id="meta-info" style="margin-top:10px; font-size:13px; color:#666;">请上传导出的 JSON 记录</div>
+            </div>
+
+            <div id="step-label">0 / 0</div>
+            <input type="range" id="progress-bar" min="0" max="0" value="0">
+
+            <div class="btn-grid">
+                <button onclick="changeStep(-999)">⏮ 起始</button>
+                <button onclick="changeStep(999)">⏭ 结果</button>
+                <button onclick="changeStep(-1)">◀ 上一步</button>
+                <button onclick="changeStep(1)">下一步 ▶</button>
+                <button id="playBtn" class="btn-primary" onclick="togglePlay()">▶ 自动播放</button>
+            </div>
+
+            <div style="margin-top:20px; font-size:12px; color:#999; text-align:center;">
+                * 速度控制: 
+                <select id="speedSelect" style="font-size:12px;">
+                    <option value="1500">慢速</option>
+                    <option value="800" selected>正常</option>
+                    <option value="400">快速</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('reviewCanvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_SIZE = 15;
+        const CELL_SIZE = 600 / GRID_SIZE;
+        const OFFSET = CELL_SIZE / 2;
+
+        let moves = [];
+        let currentIdx = 0;
+        let playTimer = null;
+
+        // --- 核心绘图 ---
+        function render() {
+            // 1. 绘制棋盘
+            ctx.clearRect(0, 0, 600, 600);
+            ctx.strokeStyle = "#8B4513";
+            ctx.lineWidth = 1;
+            for (let i = 0; i < GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(OFFSET, OFFSET + i * CELL_SIZE); ctx.lineTo(600 - OFFSET, OFFSET + i * CELL_SIZE); ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(OFFSET + i * CELL_SIZE, OFFSET); ctx.lineTo(OFFSET + i * CELL_SIZE, 600 - OFFSET); ctx.stroke();
+            }
+
+            // 2. 绘制直到 currentIdx 的棋子
+            for (let i = 0; i < currentIdx; i++) {
+                const m = moves[i];
+                const sx = OFFSET + m.x * CELL_SIZE;
+                const sy = OFFSET + m.y * CELL_SIZE;
+
+                ctx.beginPath();
+                ctx.arc(sx, sy, CELL_SIZE * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = m.color === 1 ? "#000" : "#fff";
+                ctx.fill();
+                
+                // 给最后一手加红框标记
+                if (i === currentIdx - 1) {
+                    ctx.strokeStyle = "red";
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(sx - CELL_SIZE*0.2, sy - CELL_SIZE*0.2, CELL_SIZE*0.4, CELL_SIZE*0.4);
+                }
+            }
+
+            // 3. 更新 UI
+            document.getElementById('step-label').innerText = `${currentIdx} / ${moves.length}`;
+            document.getElementById('progress-bar').value = currentIdx;
+        }
+
+        // --- 文件处理 ---
+        document.getElementById('fileInput').onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    moves = data.moves || [];
+                    currentIdx = 0;
+                    document.getElementById('progress-bar').max = moves.length;
+                    document.getElementById('meta-info').innerText = `对局: ${data.game_meta.name || '未命名'}\n时间: ${data.game_meta.start_time}`;
+                    render();
+                } catch(err) {
+                    alert("棋谱文件格式错误！");
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        // --- 播放控制 ---
+        function changeStep(delta) {
+            if (delta === 999) currentIdx = moves.length;
+            else if (delta === -999) currentIdx = 0;
+            else currentIdx = Math.min(moves.length, Math.max(0, currentIdx + delta));
+            render();
+        }
+
+        document.getElementById('progress-bar').oninput = function() {
+            currentIdx = parseInt(this.value);
+            render();
+        };
+
+        function togglePlay() {
+            const btn = document.getElementById('playBtn');
+            if (playTimer) {
+                clearInterval(playTimer);
+                playTimer = null;
+                btn.innerText = "▶ 自动播放";
+            } else {
+                if (currentIdx >= moves.length) currentIdx = 0;
+                btn.innerText = "⏸ 停止播放";
+                const speed = parseInt(document.getElementById('speedSelect').value);
+                playTimer = setInterval(() => {
+                    if (currentIdx < moves.length) {
+                        currentIdx++;
+                        render();
+                    } else {
+                        togglePlay(); // 播放完自动停止
+                    }
+                }, speed);
+            }
+        }
+
+        render(); // 初始渲染空棋盘
+    </script>
+</body>
+</html>
