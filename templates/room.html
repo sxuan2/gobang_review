@@ -6,20 +6,15 @@
     <title>研讨室: {{ room_name }}</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <style>
-        /* 复用之前的 CSS，增加顶部导航 */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding-bottom: 20px; }
-        
         .header-bar { width: 100%; background: #333; color: white; padding: 10px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; }
         .header-bar a { color: #ddd; text-decoration: none; margin-left: 15px; font-size: 14px; }
-        
         h1 { color: #2c3e50; margin: 15px 0; font-size: 20px; text-align: center; }
-
-        /* 登录遮罩 */
+        
         #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; }
         .login-box { background: white; padding: 2rem; border-radius: 10px; text-align: center; width: 80%; max-width: 300px; }
         .login-box input { width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px; font-size: 16px; text-align: center; letter-spacing: 5px; }
         
-        /* 布局 */
         #main-wrapper { display: flex; gap: 20px; padding: 10px; width: 100%; max-width: 1000px; box-sizing: border-box; flex-direction: row; align-items: flex-start; justify-content: center; }
         #board-container { background: white; padding: 5px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 620px; }
         canvas { background-color: #DEB887; border: 2px solid #5c3a21; cursor: crosshair; width: 100% !important; height: auto !important; touch-action: none; }
@@ -30,7 +25,7 @@
             #sidebar { width: 100%; box-sizing: border-box; }
         }
 
-        .card { background: #f8f9fa; border-radius: 8px; padding: 10px; border: 1px solid #eee; }
+        .card { background: #f8f9fa; border-radius: 8px; padding: 10px; border: 1px solid #eee; margin-bottom: 10px; }
         select#game-select { width: 100%; padding: 8px; margin-bottom: 5px; }
         #move-list { height: 120px; overflow-y: auto; list-style: none; padding: 0; border: 1px solid #eee; background: #fff; }
         #move-list li { padding: 4px 10px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; font-size: 12px; }
@@ -43,7 +38,9 @@
         .btn-new { background-color: #28a745; }
         .btn-del { background-color: #dc3545; }
         
-        /* 导入框 */
+        .btn-ai-move { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .btn-ai-hint { background: linear-gradient(135deg, #f6d365 0%, #fda085 100%); color: #333; }
+        
         #import-input { display: none; }
     </style>
 </head>
@@ -62,9 +59,7 @@
     <div class="header-bar">
         <span>当前房间: {{ room_name }} (ID: {{ room_id }})</span>
         <div>
-            <span style="font-size: 12px; color: #aaa; margin-right: 10px;">
-                👤 {{ current_user.username }}
-            </span>
+            <span style="font-size: 12px; color: #aaa; margin-right: 10px;">👤 {{ current_user.username }}</span>
             <a href="/lobby">退出房间</a>
             <a href="/logout" style="color: #ff6b6b; margin-left: 10px;">退出系统</a>
         </div>
@@ -76,12 +71,35 @@
         </div>
 
         <div id="sidebar">
-            <div class="card">
-                <div style="font-weight:bold; margin-bottom:5px;">📂 研讨记录管理</div>
-                <select id="game-select" onchange="loadSelectedGame()"></select>
+            <div class="card" style="border-left: 4px solid #764ba2;">
+                <div style="font-weight:bold; margin-bottom:10px;">🤖 AI 导师配置</div>
                 
+                <div style="font-size: 12px; margin-bottom: 5px;">
+                    思考限时: <span id="time-val">10</span>s
+                    <input type="range" id="time-limit-range" min="5" max="60" value="10" style="width:100%" oninput="document.getElementById('time-val').innerText=this.value">
+                </div>
+                
+                <div style="font-size: 12px; margin-bottom: 10px;">
+                    搜索广度: <span id="cand-val">15</span>个点
+                    <input type="range" id="cand-limit-range" min="5" max="30" value="15" style="width:100%" oninput="document.getElementById('cand-val').innerText=this.value">
+                </div>
+            
                 <div class="btn-row">
-                    <button class="btn-act" onclick="exportCurrentGame()" style="background:#17a2b8;">⬇ 导出本局(JSON)</button>
+                    <button class="btn-ai-move" onclick="askAItoMove()">替我走一步</button>
+                    <button class="btn-ai-hint" onclick="askHint()">提示最佳手</button>
+                </div>
+                
+                <div id="ai-timer-wrapper" style="display:none; margin-top:10px; background:#eee; border-radius:4px; overflow:hidden; height:8px;">
+                    <div id="ai-timer-bar" style="width:100%; height:100%; background:#764ba2; transition: width 1s linear;"></div>
+                </div>
+                <div id="ai-msg" style="text-align:center; font-size:12px; color:#666; margin-top:5px; min-height:18px;">等待指令...</div>
+            </div>
+
+            <div class="card">
+                <div style="font-weight:bold; margin-bottom:5px;">研讨记录管理</div>
+                <select id="game-select" onchange="loadSelectedGame()"></select>
+                <div class="btn-row">
+                    <button class="btn-act" onclick="exportCurrentGame()" style="background:#17a2b8;">⬇ 导出本局</button>
                     <button class="btn-act" onclick="triggerImport()" style="background:#6f42c1;">⬆ 导入复盘</button>
                     <input type="file" id="import-input" accept=".json" onchange="handleFileImport(this)">
                 </div>
@@ -106,35 +124,27 @@
         const socket = io();
         const roomId = "{{ room_id }}";
         let isAuthenticated = false;
-        
-        // 棋盘基础参数
         const CANVAS_SIZE = 600;
         const GRID_SIZE = 15;
         const CELL_SIZE = CANVAS_SIZE / GRID_SIZE;
         const OFFSET = CELL_SIZE / 2;
-        
         const canvas = document.getElementById('chessBoard');
         const ctx = canvas.getContext('2d');
-        
         let currentMoves = []; 
         let currentGameId = null;
         let isGameOver = false;
+        let aiHintPos = null;
 
-        // --- 认证 ---
         function joinGame() {
             const pwd = document.getElementById('password-input').value;
             socket.emit('join_room', { room_id: roomId, password: pwd });
         }
-        socket.on('auth_success', () => {
-            document.getElementById('login-overlay').style.display = 'none';
-            isAuthenticated = true;
-        });
+        socket.on('auth_success', () => { document.getElementById('login-overlay').style.display = 'none'; isAuthenticated = true; });
         socket.on('auth_fail', (d) => document.getElementById('login-msg').innerText = d.message);
 
-        // --- 绘图逻辑 (保持原样，省略细节以节省篇幅，功能完全一致) ---
         function drawBoard() {
             ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-            // 绘制背景和网格...
+            ctx.fillStyle = "#DEB887"; ctx.fillRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
             ctx.fillStyle = "#5c3a21"; ctx.font = "bold 12px Arial";
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
             for (let i = 0; i < GRID_SIZE; i++) {
@@ -161,11 +171,19 @@
             if (isLast) { ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.strokeRect(sx-CELL_SIZE*0.2, sy-CELL_SIZE*0.2, CELL_SIZE*0.4, CELL_SIZE*0.4); }
         }
 
+        function drawHintMarker() {
+            if (!aiHintPos) return;
+            let sx = OFFSET + aiHintPos.x * CELL_SIZE;
+            let sy = OFFSET + aiHintPos.y * CELL_SIZE;
+            ctx.beginPath(); ctx.arc(sx, sy, CELL_SIZE * 0.3, 0, 2*Math.PI);
+            ctx.fillStyle = "rgba(0, 255, 0, 0.6)"; ctx.fill();
+        }
+
         function render() {
             drawBoard();
+            drawHintMarker();
             currentMoves.forEach((m, i) => drawPiece(m.x, m.y, m.color, i === currentMoves.length - 1));
-            checkWin(); 
-            updateSidebar();
+            checkWin(); updateSidebar();
         }
 
         function checkWin() {
@@ -196,10 +214,8 @@
             }
         }
 
-        // --- 交互 ---
         canvas.addEventListener('mousedown', handleClick);
         canvas.addEventListener('touchstart', handleClick, {passive: false});
-
         function handleClick(e) {
             if (!isAuthenticated || isGameOver) return;
             const rect = canvas.getBoundingClientRect();
@@ -207,74 +223,108 @@
             let cy = e.touches ? e.touches[0].clientY : e.clientY;
             let x = Math.round(((cx - rect.left) * (canvas.width/rect.width) - OFFSET) / CELL_SIZE);
             let y = Math.round(((cy - rect.top) * (canvas.height/rect.height) - OFFSET) / CELL_SIZE);
-            
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                aiHintPos = null; stopTimer();
+                document.getElementById('ai-msg').innerText = "等待指令...";
                 if (!currentMoves.some(m => m.x === x && m.y === y)) {
                     let color = (currentMoves.length % 2 === 0) ? 1 : 2;
-                    // 注意：发送了 room_id 和 game_id
                     socket.emit('place_move', { room_id: roomId, game_id: currentGameId, x, y, color });
                 }
             }
             if(e.type === 'touchstart') e.preventDefault();
         }
 
-        // --- 按钮功能 ---
-        function requestUndo() { if(confirm("撤销一步?")) socket.emit('undo_move', {room_id: roomId, game_id: currentGameId}); }
-        function requestNewGame() { if(confirm("新建对局?")) socket.emit('new_game', {room_id: roomId}); }
-        function requestDeleteGame() { 
-            let gid = document.getElementById('game-select').value;
-            if(confirm(`删除记录 ${gid}?`)) socket.emit('delete_game', {room_id: roomId, game_id: gid}); 
+        // --- 倒计时逻辑 ---
+        let countdownInterval = null;
+        function startTimer(seconds) {
+            const bar = document.getElementById('ai-timer-bar');
+            const wrapper = document.getElementById('ai-timer-wrapper');
+            wrapper.style.display = 'block';
+            bar.style.transition = 'none'; bar.style.width = '100%';
+            let remaining = seconds;
+            setTimeout(() => { bar.style.transition = `width ${seconds}s linear`; bar.style.width = '0%'; }, 50);
+            countdownInterval = setInterval(() => {
+                remaining--;
+                document.getElementById('ai-msg').innerText = `AI 思考中... ${remaining}s`;
+                if (remaining <= 0) clearInterval(countdownInterval);
+            }, 1000);
         }
-        function loadSelectedGame() {
-            let gid = document.getElementById('game-select').value;
-            // 只是切换显示，不弹confirm了，体验好一点
-            socket.emit('load_game', {room_id: roomId, game_id: gid});
+        function stopTimer() {
+            clearInterval(countdownInterval);
+            document.getElementById('ai-timer-wrapper').style.display = 'none';
         }
 
-        // --- 导入导出 ---
-        function exportCurrentGame() {
-            if(!currentGameId) return;
-            window.open(`/api/export_game/${currentGameId}`, '_blank');
+        // --- AI 调用 ---
+        function askAItoMove() {
+            if(isGameOver) return alert("对局已结束");
+            const timeLimit = document.getElementById('time-limit-range').value;
+            const maxCand = document.getElementById('cand-limit-range').value;
+            
+            startTimer(timeLimit);
+            fetch('/api/ai/move', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    room_id: roomId, 
+                    game_id: currentGameId, // [关键修复] 明确告诉 AI 我看的是哪盘棋
+                    time_limit: timeLimit, 
+                    max_candidates: maxCand})
+            })
+            .then(res => res.json())
+            .then(data => {
+                stopTimer();
+                if(data.status !== 'success') document.getElementById('ai-msg').innerText = data.message || "AI 无法落子";
+                else {
+                    document.getElementById('ai-msg').innerText = `AI 落子 (${data.x+1}, ${data.y+1}) 分:${data.score}`;
+                    aiHintPos = null;
+                }
+            }).catch(() => { stopTimer(); document.getElementById('ai-msg').innerText = "请求失败"; });
         }
+
+        function askHint() {
+            if(isGameOver) return;
+            document.getElementById('ai-msg').innerText = "正在分析...";
+            fetch('/api/ai/hint', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({room_id: roomId, game_id: currentGameId})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    document.getElementById('ai-msg').innerText = `推荐: (${data.x+1}, ${data.y+1}) 胜率:${data.win_rate}`;
+                    aiHintPos = {x: data.x, y: data.y}; render();
+                } else document.getElementById('ai-msg').innerText = "无法获取建议";
+            });
+        }
+
+        function requestUndo() { if(confirm("撤销一步?")) socket.emit('undo_move', {room_id: roomId, game_id: currentGameId}); }
+        function requestNewGame() { if(confirm("新建对局?")) socket.emit('new_game', {room_id: roomId}); }
+        function requestDeleteGame() { let gid = document.getElementById('game-select').value; if(confirm(`删除记录 ${gid}?`)) socket.emit('delete_game', {room_id: roomId, game_id: gid}); }
+        function loadSelectedGame() { socket.emit('load_game', {room_id: roomId, game_id: document.getElementById('game-select').value}); }
+        function exportCurrentGame() { if(currentGameId) window.open(`/api/export_game/${currentGameId}`, '_blank'); }
         function triggerImport() { document.getElementById('import-input').click(); }
         function handleFileImport(input) {
             if(input.files.length === 0) return;
-            let formData = new FormData();
-            formData.append('file', input.files[0]);
-            formData.append('room_id', roomId);
-            
-            fetch('/api/import_game', { method: 'POST', body: formData })
-                .then(r => r.json())
-                .then(d => {
-                    if(d.error) alert("导入失败: " + d.error);
-                    else { alert("导入成功，对局ID: " + d.game_id); input.value = ''; }
-                });
+            let formData = new FormData(); formData.append('file', input.files[0]); formData.append('room_id', roomId);
+            fetch('/api/import_game', { method: 'POST', body: formData }).then(r => r.json()).then(d => {
+                if(d.error) alert("导入失败: " + d.error); else { alert("导入成功"); input.value = ''; }
+            });
         }
 
-        // --- Socket 更新 ---
         socket.on('update_board', (data) => {
-            currentMoves = data.moves;
-            currentGameId = data.game_id;
-            
-            // 更新下拉列表
-            const sel = document.getElementById('game-select');
-            sel.innerHTML = '';
+            currentMoves = data.moves; currentGameId = data.game_id; aiHintPos = null;
+            const sel = document.getElementById('game-select'); sel.innerHTML = '';
             data.games_list.forEach(g => {
-                let opt = document.createElement('option');
-                opt.value = g.id;
-                opt.text = `[${g.id}] ${g.name}`;
-                if(g.id == currentGameId) opt.selected = true;
-                sel.appendChild(opt);
+                let opt = document.createElement('option'); opt.value = g.id; opt.text = `[${g.id}] ${g.name}`;
+                if(g.id == currentGameId) opt.selected = true; sel.appendChild(opt);
             });
-            
-            updateSidebar();
-            render();
+            updateSidebar(); render();
         });
         
         function updateSidebar() {
             document.getElementById('step-count').innerText = currentMoves.length;
-            let list = document.getElementById('move-list');
-            list.innerHTML = '';
+            let list = document.getElementById('move-list'); list.innerHTML = '';
             currentMoves.forEach((m, i) => {
                 let li = document.createElement('li');
                 li.innerHTML = `<span>#${i+1} ${m.color===1?'黑':'白'}</span> <span>(${m.x+1}, ${m.y+1})</span>`;
@@ -285,7 +335,6 @@
             document.getElementById('status-text').innerText = status;
         }
 
-        // 初始化
         drawBoard();
     </script>
 </body>
