@@ -36,11 +36,12 @@
 </head>
 <body>
     <div class="user-bar">
-    👤 {{ current_user.username }}
-    {% if current_user.is_admin %}
-        <a href="/admin_panel">⚙️ 后台管理</a>
-    {% endif %}
-    <a href="/logout" class="danger">退出登录</a>
+        👤 {{ current_user.username }}
+        {% if current_user.is_admin %}
+            <a href="/admin_panel">⚙️ 后台管理</a>
+        {% endif %}
+        <a href="/" style="text-decoration:none; color:#007bff;">返回门户</a>
+        <a href="/logout" class="danger">退出登录</a>
     </div>
 
     <h1>五子棋研讨大厅</h1>

@@ -16,7 +16,6 @@ SCORE_LIVE_TWO = 2000
 
 DIRECTIONS = [(0,1),(1,0),(1,1),(1,-1)]
 
-
 class GomokuAI:
 
     def __init__(self):
@@ -31,48 +30,37 @@ class GomokuAI:
     def is_timeout(self):
         return (time.time() - self.start_time) > self.time_limit
 
-    # =============================
-    # 主入口
-    # =============================
     def get_best_move(self, player, time_limit=10.0, max_candidates=15):
 
         self.start_time = time.time()
         self.time_limit = max(1.0, float(time_limit) - 0.8)
         self.max_candidates = int(max_candidates)
 
-        # 空盘
         if np.all(self.board == EMPTY):
             return (7,7), 0
 
         opponent = 3 - player
 
-        # =============================
-        # 1. 一步必胜
-        # =============================
+        # 一步必胜
         for y in range(BOARD_SIZE):
             for x in range(BOARD_SIZE):
                 if self.board[y][x] == EMPTY:
                     self.board[y][x] = player
                     if self.check_win(x,y,player):
                         self.board[y][x] = EMPTY
-                        return (x,y), SCORE_WIN
+                        return (int(x),int(y)), int(SCORE_WIN)
                     self.board[y][x] = EMPTY
 
-        # =============================
-        # 2. 一步必堵
-        # =============================
+        # 一步必堵
         for y in range(BOARD_SIZE):
             for x in range(BOARD_SIZE):
                 if self.board[y][x] == EMPTY:
                     self.board[y][x] = opponent
                     if self.check_win(x,y,opponent):
                         self.board[y][x] = EMPTY
-                        return (x,y), -SCORE_WIN
+                        return (int(x),int(y)), int(-SCORE_WIN)
                     self.board[y][x] = EMPTY
 
-        # =============================
-        # 3. AlphaBeta 搜索
-        # =============================
         best_move = None
         best_score = -float("inf")
 
@@ -92,16 +80,12 @@ class GomokuAI:
         if best_move is None:
             return (7,7), 0
 
-        return best_move, int(best_score)
+        return (int(best_move[0]),int(best_move[1])), int(best_score)
 
-    # =============================
-    # 搜索
-    # =============================
     def minimax_root(self, depth, player):
 
         alpha = -float("inf")
         beta = float("inf")
-
         best_val = -float("inf")
         best_move = None
 
@@ -119,7 +103,6 @@ class GomokuAI:
                 return (x,y), SCORE_WIN
 
             val = self.minimax(depth-1, alpha, beta, False, 3-player)
-
             self.board[y][x] = EMPTY
 
             if val > best_val:
@@ -171,9 +154,6 @@ class GomokuAI:
                     break
             return value
 
-    # =============================
-    # 候选点
-    # =============================
     def get_sorted_candidates(self, player):
 
         candidates = set()
@@ -192,7 +172,7 @@ class GomokuAI:
                             candidates.add((x,y))
 
         scored = []
-        opponent = 3 - player
+        opponent = 3-player
 
         for (x,y) in candidates:
             s1 = self.evaluate_point(x,y,player)
@@ -200,12 +180,8 @@ class GomokuAI:
             scored.append(((x,y), s1 + int(0.9*s2)))
 
         scored.sort(key=lambda t: t[1], reverse=True)
-
         return [m for (m,_) in scored[:self.max_candidates]]
 
-    # =============================
-    # 评估
-    # =============================
     def evaluate_board(self, player):
 
         opponent = 3-player
@@ -214,17 +190,14 @@ class GomokuAI:
         for i in range(BOARD_SIZE):
             score += self.evaluate_line(self.board[i,:], player)
             score -= self.evaluate_line(self.board[i,:], opponent)
-
             score += self.evaluate_line(self.board[:,i], player)
             score -= self.evaluate_line(self.board[:,i], opponent)
 
         for k in range(-BOARD_SIZE+1, BOARD_SIZE):
             d1 = np.diag(self.board, k)
             d2 = np.diag(np.fliplr(self.board), k)
-
             score += self.evaluate_line(d1, player)
             score -= self.evaluate_line(d1, opponent)
-
             score += self.evaluate_line(d2, player)
             score -= self.evaluate_line(d2, opponent)
 
@@ -286,9 +259,6 @@ class GomokuAI:
 
         return score
 
-    # =============================
-    # 胜负检测
-    # =============================
     def check_win(self, x,y, player):
 
         for dx,dy in DIRECTIONS:

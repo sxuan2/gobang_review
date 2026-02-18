@@ -27,13 +27,39 @@
 
         #progress-bar { width: 100%; margin: 15px 0; cursor: pointer; }
         #step-label { font-size: 18px; font-weight: bold; text-align: center; margin: 10px 0; color: #2c3e50; }
+
+        .user-bar {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 14px;
+            color: #555;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 20px;
+        }
+        .user-bar a {
+            text-decoration: none;
+            margin-left: 10px;
+            color: #007bff;
+            font-weight: bold;
+        }
+        .user-bar a.danger { color: #dc3545; }
     </style>
 </head>
 <body>
 
     <div class="header">
         <h2 style="margin:0;">🎬 五子棋战术复盘</h2>
+    </div>
+
+    <div class="user-bar">
+        👤 {{ current_user.username }}
+        {% if current_user.is_admin %}
+            <a href="/admin_panel">⚙️ 后台管理</a>
+        {% endif %}
         <a href="/" style="text-decoration:none; color:#007bff;">返回门户</a>
+        <a href="/logout" class="danger">退出登录</a>
     </div>
 
     <div id="main-layout">
