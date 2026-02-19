@@ -50,8 +50,20 @@
         <div class="login-box">
             <h3>请输入房间密码</h3>
             <div style="margin-bottom:10px; color:#666;">房间ID: {{ room_id }}</div>
+
             <input type="text" id="password-input" placeholder="6位数字" maxlength="6" pattern="\d*">
-            <button onclick="joinGame()" style="background:#007bff; width:100%;">验证进入</button>
+
+            <button onclick="joinGame()" 
+                    style="background:#007bff; width:100%; margin-bottom:8px;">
+                验证进入
+            </button>
+
+            <!-- 新增：返回大厅按钮 -->
+            <button onclick="window.location.href='/lobby'"
+                    style="background:#6c757d; width:100%;">
+                返回大厅
+            </button>
+
             <p id="login-msg" style="color: red; margin-top: 10px; font-size: 12px;"></p>
         </div>
     </div>
@@ -104,6 +116,9 @@
                     <input type="file" id="import-input" accept=".json" onchange="handleFileImport(this)">
                 </div>
                 <button class="btn-act btn-del" onclick="requestDeleteGame()">🗑 删除选中记录</button>
+
+                <!-- [新增] 修改房间密码 -->
+                <button class="btn-act" onclick="changePassword()" style="background:#ff9800;">🔑 修改房间密码</button>
             </div>
 
             <div class="card" style="display:flex; justify-content: space-between;">
@@ -333,6 +348,28 @@
             list.scrollTop = list.scrollHeight;
             let status = isGameOver ? "已结束" : (currentMoves.length%2===0 ? "黑方落子" : "白方落子");
             document.getElementById('status-text').innerText = status;
+        }
+
+        // [新增] 修改房间密码（前提：已通过房间密码验证进入）
+        function changePassword() {
+            if (!isAuthenticated) {
+                alert("请先输入房间密码进入后再修改");
+                return;
+            }
+            const newPwd = prompt("输入新的6位数字密码:");
+            if (!newPwd) return;
+
+            fetch('/api/change_room_password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({room_id: roomId, new_password: newPwd})
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.error) alert(d.error);
+                else alert("密码修改成功");
+            })
+            .catch(() => alert("请求失败"));
         }
 
         drawBoard();

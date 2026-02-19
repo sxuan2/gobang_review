@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>研讨室大厅</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; max-width: 800px; margin: 0 auto; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; max-width: 900px; margin: 0 auto; }
         h1 { text-align: center; color: #2c3e50; }
         .section { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
-        button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; background: #007bff; color: white; }
+        input { padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
+        button { padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer; background: #007bff; color: white; font-size: 12px; }
         button:hover { opacity: 0.9; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
-        tr:hover { background-color: #f8f9fa; cursor: pointer; }
-        /* 添加到 style 标签内 */
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
+        tr:hover { background-color: #f8f9fa; }
+        .deleted { opacity: 0.4; }
         .user-bar {
             position: absolute;
             top: 15px;
@@ -35,62 +35,146 @@
     </style>
 </head>
 <body>
-    <div class="user-bar">
-        👤 {{ current_user.username }}
-        {% if current_user.is_admin %}
-            <a href="/admin_panel">⚙️ 后台管理</a>
-        {% endif %}
-        <a href="/" style="text-decoration:none; color:#007bff;">返回门户</a>
-        <a href="/logout" class="danger">退出登录</a>
-    </div>
 
-    <h1>五子棋研讨大厅</h1>
-    
-    <div class="section">
-        <h3>🏠 创建新研讨室</h3>
-        <input type="text" id="new-name" placeholder="房间名称 (如: 技术部复盘)" style="width: 200px;">
-        <input type="text" id="new-pwd" placeholder="6位数字密码" maxlength="6" style="width: 120px;">
-        <button onclick="createRoom()">立即创建</button>
-    </div>
+<div class="user-bar">
+    👤 {{ current_user.username }}
+    {% if current_user.is_admin %}
+        <a href="/admin_panel">⚙️ 后台管理</a>
+    {% endif %}
+    <a href="/" style="text-decoration:none; color:#007bff;">返回门户</a>
+    <a href="/logout" class="danger">退出登录</a>
+</div>
 
-    <div class="section">
-        <h3>📋 房间列表</h3>
-        <table>
-            <thead><tr><th>ID</th><th>名称</th><th>创建时间</th><th>操作</th></tr></thead>
-            <tbody>
-                {% for room in rooms %}
-                <tr onclick="enterRoom('{{ room.id }}')">
-                    <td>{{ room.id }}</td>
-                    <td>{{ room.name }}</td>
-                    <td>{{ room.created_at }}</td>
-                    <td><button style="padding: 5px 10px; font-size: 12px;">进入</button></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+<h1>五子棋研讨大厅</h1>
 
-    <script>
-        function createRoom() {
-            const name = document.getElementById('new-name').value;
-            const pwd = document.getElementById('new-pwd').value;
-            if(!name || !pwd) return alert("请填写完整");
-            
-            fetch('/api/create_room', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: name, password: pwd})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if(data.error) alert(data.error);
-                else window.location.reload();
-            });
-        }
+<div class="section">
+    <h3>🏠 创建新研讨室</h3>
+    <input type="text" id="new-name" placeholder="房间名称" style="width:200px;">
+    <input type="text" id="new-pwd" placeholder="6位数字密码" maxlength="6" style="width:120px;">
+    <button onclick="createRoom()">创建</button>
+</div>
 
-        function enterRoom(id) {
-            window.location.href = `/room/${id}`;
-        }
-    </script>
+<div class="section">
+    <h3>📋 房间列表</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>创建日期</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for room in rooms %}
+        <tr class="{% if room.is_deleted %}deleted{% endif %}">
+            <td>{{ room.id }}</td>
+            <td>{{ room.name }}</td>
+            <td>{{ room.created_at[:10] }}</td>
+
+            <td style="white-space:nowrap;">
+                {% if not room.is_deleted %}
+
+                    <!-- 进入按钮 -->
+                    <button onclick="enterRoom('{{ room.id }}')"
+                            style="background:#007bff;">
+                        进入
+                    </button>
+
+                    <!-- 改名按钮 -->
+                    <button onclick="renameRoom('{{ room.id }}')"
+                            style="background:#48b300;">
+                        改名
+                    </button>
+
+                    <!-- 隐藏按钮 -->
+                    <button onclick="deleteRoom('{{ room.id }}')"
+                            style="background:#dc3545;">
+                        删除
+                    </button>
+
+                {% endif %}
+
+                {% if current_user.is_admin and room.is_deleted %}
+                    <button onclick="restoreRoom('{{ room.id }}')"
+                            style="background:#28a745;">
+                        恢复
+                    </button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+
+    </table>
+</div>
+
+<script>
+function createRoom() {
+    const name = document.getElementById('new-name').value;
+    const pwd = document.getElementById('new-pwd').value;
+    if(!name || !pwd) return alert("请填写完整");
+
+    fetch('/api/create_room', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name, password: pwd})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.error) alert(data.error);
+        else location.reload();
+    });
+}
+
+function enterRoom(id) {
+    window.location.href = `/room/${id}`;
+}
+
+function renameRoom(id) {
+    const newName = prompt("输入新房间名称:");
+    if (!newName) return;
+
+    fetch('/api/rename_room', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({room_id: id, new_name: newName})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.error) alert(d.error);
+        else location.reload();
+    });
+}
+
+function deleteRoom(id) {
+    if (!confirm("确定隐藏该房间？")) return;
+
+    fetch('/api/delete_room', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({room_id: id})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.error) alert(d.error);
+        else location.reload();
+    });
+}
+
+function restoreRoom(id) {
+    fetch('/api/restore_room', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({room_id: id})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.error) alert(d.error);
+        else location.reload();
+    });
+}
+</script>
+
 </body>
 </html>

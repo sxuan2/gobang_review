@@ -92,6 +92,14 @@ def init_and_migrate_db():
     # 3. 房间表
     c.execute('''CREATE TABLE IF NOT EXISTS rooms
                  (id TEXT PRIMARY KEY, name TEXT, password TEXT, created_at TEXT, creator TEXT)''')
+    
+    cursor = c.execute("PRAGMA table_info(rooms)")
+    columns = [row['name'] for row in cursor.fetchall()]
+
+    if 'is_deleted' not in columns:
+        print(">>> 添加 is_deleted 字段")
+        c.execute("ALTER TABLE rooms ADD COLUMN is_deleted INTEGER DEFAULT 0")
+        conn.commit()
 
     # 4. 棋局表（兼容迁移）
     c.execute('''CREATE TABLE IF NOT EXISTS games
@@ -319,13 +327,31 @@ def portal():
     return render_template('portal.html', user=current_user)
 
 
+# @app.route('/lobby')
+# @login_required
+# def lobby():
+#     conn = get_db_connection()
+#     rooms = conn.execute("SELECT * FROM rooms ORDER BY created_at DESC").fetchall()
+#     conn.close()
+#     return render_template('lobby.html', rooms=rooms, user=current_user)
+
 @app.route('/lobby')
 @login_required
 def lobby():
     conn = get_db_connection()
-    rooms = conn.execute("SELECT * FROM rooms ORDER BY created_at DESC").fetchall()
+
+    if current_user.is_admin:
+        rooms = conn.execute(
+            "SELECT * FROM rooms ORDER BY is_deleted ASC, created_at DESC"
+        ).fetchall()
+    else:
+        rooms = conn.execute(
+            "SELECT * FROM rooms WHERE is_deleted = 0 ORDER BY created_at DESC"
+        ).fetchall()
+
     conn.close()
     return render_template('lobby.html', rooms=rooms, user=current_user)
+
 
 
 @app.route('/api/create_room', methods=['POST'])
@@ -338,6 +364,79 @@ def api_create_room():
         return jsonify({'error': '无效输入'}), 400
     room_id = create_room_record(name, password, current_user.username)
     return jsonify({'room_id': room_id})
+
+@app.route('/api/rename_room', methods=['POST'])
+@login_required
+def rename_room():
+    data = request.json or {}
+    room_id = data.get('room_id')
+    new_name = data.get('new_name')
+
+    if not room_id or not new_name:
+        return jsonify({'error': '参数错误'}), 400
+
+    conn = get_db_connection()
+    room = conn.execute("SELECT creator FROM rooms WHERE id = ?", (room_id,)).fetchone()
+
+    if not room:
+        conn.close()
+        return jsonify({'error': '房间不存在'}), 404
+
+    if not (current_user.is_admin or room['creator'] == current_user.username):
+        conn.close()
+        return jsonify({'error': '无权限'}), 403
+
+    conn.execute("UPDATE rooms SET name = ? WHERE id = ?", (new_name, room_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/change_room_password', methods=['POST'])
+@login_required
+def change_room_password():
+    data = request.json or {}
+    room_id = data.get('room_id')
+    new_password = data.get('new_password')
+
+    if not room_id or not new_password or len(new_password) != 6 or not new_password.isdigit():
+        return jsonify({'error': '密码必须为6位数字'}), 400
+
+    conn = get_db_connection()
+    room = conn.execute("SELECT id FROM rooms WHERE id = ?", (room_id,)).fetchone()
+
+    if not room:
+        conn.close()
+        return jsonify({'error': '房间不存在'}), 404
+
+    conn.execute("UPDATE rooms SET password = ? WHERE id = ?", (new_password, room_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/delete_room', methods=['POST'])
+@login_required
+def delete_room():
+    data = request.json or {}
+    room_id = data.get('room_id')
+
+    conn = get_db_connection()
+    room = conn.execute("SELECT creator FROM rooms WHERE id = ?", (room_id,)).fetchone()
+
+    if not room:
+        conn.close()
+        return jsonify({'error': '房间不存在'}), 404
+
+    if not (current_user.is_admin or room['creator'] == current_user.username):
+        conn.close()
+        return jsonify({'error': '无权限'}), 403
+
+    conn.execute("UPDATE rooms SET is_deleted = 1 WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
 
 
 @app.route('/room/<room_id>')
